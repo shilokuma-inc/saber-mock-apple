@@ -126,9 +126,10 @@ enum StageSceneBuilder {
         camera.bloomBlurRadius = 12
         let node = SCNNode()
         node.camera = camera
-        // プレイヤーの少し後ろ・上から見下ろし、手元のセイバーと奥から来るノーツを両方映す
-        node.position = SCNVector3(0, 1.7, 1.5)
-        node.look(at: SCNVector3(0, 1.1, -4))
+        // プレイヤーの後ろ・上から見下ろし、手元のセイバーと奥から来るノーツを両方映す。
+        // 真後ろの目線だと正面に向けたセイバーが点にしか見えないため、高めに置いている
+        node.position = SCNVector3(0, 2.2, 1.9)
+        node.look(at: SCNVector3(0, 0.8, -3))
         return node
     }
 

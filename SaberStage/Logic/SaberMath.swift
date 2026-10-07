@@ -70,9 +70,9 @@ enum SaberRig {
         return simd_cross(angularVelocity, tip - shoulder(for: hand))
     }
 
-    /// コントローラーが未接続のときの構え（正面やや下向き）
+    /// コントローラーが未接続のときの構え（正面やや外側に、斜め上へ向ける）
     static func restingOrientation(for hand: Hand) -> simd_quatd {
-        let yaw = hand == .left ? 0.15 : -0.15
-        return simd_quatd(angle: yaw, axis: SIMD3(0, 1, 0)) * simd_quatd(angle: -1.8, axis: SIMD3(1, 0, 0))
+        let yaw = hand == .left ? 0.25 : -0.25
+        return simd_quatd(angle: yaw, axis: SIMD3(0, 1, 0)) * simd_quatd(angle: -0.95, axis: SIMD3(1, 0, 0))
     }
 }
