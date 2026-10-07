@@ -89,6 +89,9 @@ final class ControllerModel {
         case .haptic(let intensity):
             haptic.impactOccurred(intensity: intensity)
             haptic.prepare()
+        case .heartbeat:
+            // StageConnection の中で処理するので、ここには届かない
+            break
         }
     }
 }

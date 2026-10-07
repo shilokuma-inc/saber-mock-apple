@@ -8,6 +8,7 @@ final class StageConnection: @unchecked Sendable {
     enum State: Sendable, Equatable {
         case searching
         case connecting(String)
+        /// Mac からのハートビートが届いている
         case ready(String)
         case failed(String)
     }
@@ -19,7 +20,11 @@ final class StageConnection: @unchecked Sendable {
     private let decoder = JSONDecoder()
 
     private var browser: NWBrowser?
+    private var monitor: DispatchSourceTimer?
     private var connection: NWConnection?
+    private var connectionName = ""
+    private var connectedAt: TimeInterval = 0
+    private var lastHeartbeat: TimeInterval?
     private var latestResults: Set<NWBrowser.Result> = []
 
     init(
@@ -31,15 +36,19 @@ final class StageConnection: @unchecked Sendable {
     }
 
     func start() {
-        queue.async { self.startBrowsing() }
+        queue.async {
+            self.startBrowsing()
+            self.startMonitor()
+        }
     }
 
     func stop() {
         queue.async {
             self.browser?.cancel()
             self.browser = nil
-            self.connection?.cancel()
-            self.connection = nil
+            self.monitor?.cancel()
+            self.monitor = nil
+            self.disconnect()
         }
     }
 
@@ -50,6 +59,8 @@ final class StageConnection: @unchecked Sendable {
             connection.send(content: data, completion: .idempotent)
         }
     }
+
+    // MARK: - Browsing
 
     private func startBrowsing() {
         guard browser == nil else { return }
@@ -70,6 +81,25 @@ final class StageConnection: @unchecked Sendable {
         self.browser = browser
     }
 
+    /// ハートビートが途絶えた接続を捨てて、名前解決からやり直す
+    private func startMonitor() {
+        guard monitor == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
+            guard let self, connection != nil else { return }
+            let lastSign = lastHeartbeat ?? connectedAt
+            if ProcessInfo.processInfo.systemUptime - lastSign > ControllerProtocol.heartbeatTimeout {
+                disconnect()
+                connectIfNeeded()
+            }
+        }
+        timer.resume()
+        monitor = timer
+    }
+
+    // MARK: - Connection
+
     private func connectIfNeeded() {
         guard connection == nil else { return }
         // 複数の Mac が見つかったときは名前順で最初のものにつなぐ
@@ -82,24 +112,29 @@ final class StageConnection: @unchecked Sendable {
         parameters.includePeerToPeer = true
         let connection = NWConnection(to: endpoint, using: parameters)
         connection.stateUpdateHandler = { [weak self] state in
-            self?.handle(state, of: connection, name: serviceName)
+            self?.handle(state, of: connection)
         }
         self.connection = connection
+        connectionName = serviceName
+        connectedAt = ProcessInfo.processInfo.systemUptime
+        lastHeartbeat = nil
         onStateChange(.connecting(serviceName))
         connection.start(queue: queue)
         receive(on: connection)
     }
 
-    private func handle(_ state: NWConnection.State, of connection: NWConnection, name: String) {
+    private func disconnect() {
+        connection?.cancel()
+        connection = nil
+        lastHeartbeat = nil
+    }
+
+    private func handle(_ state: NWConnection.State, of connection: NWConnection) {
+        guard self.connection === connection else { return }
         switch state {
-        case .ready:
-            onStateChange(.ready(name))
         case .failed(let error), .waiting(let error):
             onStateChange(.failed(error.localizedDescription))
-            connection.cancel()
-            if self.connection === connection {
-                self.connection = nil
-            }
+            disconnect()
             // 少し待ってからつなぎ直す
             queue.asyncAfter(deadline: .now() + 1) { self.connectIfNeeded() }
         default:
@@ -109,13 +144,25 @@ final class StageConnection: @unchecked Sendable {
 
     private func receive(on connection: NWConnection) {
         connection.receiveMessage { [weak self] data, _, _, error in
-            guard let self else { return }
-            if let data, let message = try? self.decoder.decode(StageMessage.self, from: data) {
-                self.onMessage(message)
+            guard let self, self.connection === connection else { return }
+            if let data, let message = try? decoder.decode(StageMessage.self, from: data) {
+                handle(message)
             }
-            if error == nil, self.connection === connection {
-                self.receive(on: connection)
+            if error == nil {
+                receive(on: connection)
             }
+        }
+    }
+
+    private func handle(_ message: StageMessage) {
+        switch message {
+        case .heartbeat:
+            if lastHeartbeat == nil {
+                onStateChange(.ready(connectionName))
+            }
+            lastHeartbeat = ProcessInfo.processInfo.systemUptime
+        case .haptic:
+            onMessage(message)
         }
     }
 

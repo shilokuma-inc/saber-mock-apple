@@ -18,8 +18,13 @@ final class ControllerServer: @unchecked Sendable {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
+    /// この秒数なにも届かない接続は閉じる（iPhone アプリを終了した・別の Mac につないだなど）
+    private static let idleTimeout: TimeInterval = 5
+
     private var listener: NWListener?
+    private var heartbeatTimer: DispatchSourceTimer?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var lastSeen: [ObjectIdentifier: TimeInterval] = [:]
     /// 振動を返す先。最後にその手のデータを送ってきた接続
     private var connectionByHand: [Hand: NWConnection] = [:]
 
@@ -56,8 +61,33 @@ final class ControllerServer: @unchecked Sendable {
             }
             listener.start(queue: queue)
             self.listener = listener
+            startHeartbeat()
         } catch {
             onStatusChange(.failed(error.localizedDescription))
+        }
+    }
+
+    private func startHeartbeat() {
+        guard heartbeatTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: ControllerProtocol.heartbeatInterval)
+        timer.setEventHandler { [weak self] in
+            self?.sendHeartbeats()
+        }
+        timer.resume()
+        heartbeatTimer = timer
+    }
+
+    private func sendHeartbeats() {
+        guard let data = try? encoder.encode(StageMessage.heartbeat) else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        for (key, connection) in connections {
+            if now - (lastSeen[key] ?? now) > Self.idleTimeout {
+                // cancel すると stateUpdateHandler 経由で remove される
+                connection.cancel()
+            } else {
+                connection.send(content: data, completion: .idempotent)
+            }
         }
     }
 
@@ -81,6 +111,7 @@ final class ControllerServer: @unchecked Sendable {
     private func accept(_ connection: NWConnection) {
         let key = ObjectIdentifier(connection)
         connections[key] = connection
+        lastSeen[key] = ProcessInfo.processInfo.systemUptime
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .failed, .cancelled:
@@ -94,6 +125,7 @@ final class ControllerServer: @unchecked Sendable {
     }
 
     private func remove(_ key: ObjectIdentifier) {
+        lastSeen.removeValue(forKey: key)
         guard let connection = connections.removeValue(forKey: key) else { return }
         connectionByHand = connectionByHand.filter { $0.value !== connection }
     }
@@ -111,6 +143,7 @@ final class ControllerServer: @unchecked Sendable {
     }
 
     private func handle(_ message: ControllerMessage, from connection: NWConnection) {
+        lastSeen[ObjectIdentifier(connection)] = ProcessInfo.processInfo.systemUptime
         switch message {
         case .motion(let sample):
             connectionByHand[sample.hand] = connection

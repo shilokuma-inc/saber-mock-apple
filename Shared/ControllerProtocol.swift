@@ -60,4 +60,13 @@ enum ControllerMessage: Codable, Sendable, Equatable {
 enum StageMessage: Codable, Sendable, Equatable {
     /// ノーツを斬ったときの振動（0...1）
     case haptic(intensity: Double)
+    /// Mac が受信できていることを知らせる。UDP は相手がいなくなっても送信側で気づけないため、
+    /// iPhone はこれが途絶えたら接続をやり直す（Mac アプリを再起動するとポートが変わる）
+    case heartbeat
+}
+
+extension ControllerProtocol {
+    static let heartbeatInterval: TimeInterval = 0.5
+    /// この秒数ハートビートが届かなければ、iPhone は接続し直す
+    static let heartbeatTimeout: TimeInterval = 2.5
 }
