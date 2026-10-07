@@ -27,7 +27,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shilokuma.SaberMock.Stage
         PRODUCT_NAME: SaberStage
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "-"
+        # アドホック署名（"-"）だとビルドのたびに署名が変わり、
+        # macOS のファイアウォールで許可した設定が引き継がれないため Apple Development で署名する
+        CODE_SIGN_IDENTITY: Apple Development
         ENABLE_HARDENED_RUNTIME: false
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_CFBundleDisplayName: SaberStage
@@ -73,7 +75,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.shilokuma.SaberMock.StageTests
-        CODE_SIGN_IDENTITY: "-"
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/SaberStage.app/Contents/MacOS/SaberStage
         BUNDLE_LOADER: $(TEST_HOST)
