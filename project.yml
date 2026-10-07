@@ -1,0 +1,93 @@
+name: SaberMock
+options:
+  bundleIdPrefix: jp.shilokuma.SaberMock
+  deploymentTarget:
+    macOS: "15.0"
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: XU74X3434S
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    DEAD_CODE_STRIPPING: true
+
+targets:
+  # Mac 側: 譜面を表示し、iPhone から届く姿勢でセイバーを動かして判定する
+  SaberStage:
+    type: application
+    platform: macOS
+    sources:
+      - SaberStage
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.shilokuma.SaberMock.Stage
+        PRODUCT_NAME: SaberStage
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: false
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: SaberStage
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: iPhone コントローラーからの姿勢データを受け取るためにローカルネットワークを使います。
+    info:
+      path: SaberStage/Info.plist
+      properties:
+        NSBonjourServices:
+          - _sabermock._udp
+
+  # iPhone 側: CoreMotion の姿勢を UDP で Mac に送るコントローラー
+  SaberController:
+    type: application
+    platform: iOS
+    sources:
+      - SaberController
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.shilokuma.SaberMock.Controller
+        PRODUCT_NAME: SaberController
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: SaberController
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Mac に姿勢データを送るためにローカルネットワークを使います。
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIRequiresFullScreen: true
+    info:
+      path: SaberController/Info.plist
+      properties:
+        NSBonjourServices:
+          - _sabermock._udp
+
+  SaberStageTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - SaberStageTests
+    dependencies:
+      - target: SaberStage
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.shilokuma.SaberMock.StageTests
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/SaberStage.app/Contents/MacOS/SaberStage
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  SaberStage:
+    build:
+      targets:
+        SaberStage: all
+        SaberStageTests: [test]
+    test:
+      targets:
+        - SaberStageTests
+  SaberController:
+    build:
+      targets:
+        SaberController: all
